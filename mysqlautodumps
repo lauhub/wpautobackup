@@ -7,6 +7,149 @@ BACKUP_DIR=$HOME/wpBackup
 
 #Replace this with gzip if you have large database that make compression too long
 ZIP_TOOL=bzip2
+ZIP_SUFFIX=bz2
+
+GREP=/bin/grep
+AWK=/usr/bin/awk
 
 
+WWW_DIR=/var/www
+
+#The log file is there
+AUTOBACKUP_CONF_FOLDER=$HOME/.wpautobackup
+
+#If it exists, load the configuration file
+if [[ -f $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf ]]; then
+	. wpautobackup.conf
+fi
+
+
+mkdir -p $AUTOBACKUP_CONF_FOLDER
+mkdir -p $BACKUP_DIR
+
+CURRENT_DATE=$(date +%Y%m%d%H%M%S)
+
+#The log file:
+LOGFILE=$AUTOBACKUP_CONF_FOLDER/wpautobackup.log
+
+#Redirect to the log file and to the default ouptut
+exec > >(tee --append $LOGFILE)
+	
+# Without this, only stdout would be captured - i.e. your
+# log file would not contain any error messages.
+# SEE answer by Adam Spiers, which keeps STDERR a seperate stream -
+# I did not want to steal from him by simply adding his answer to mine.
+exec 2>&1
+
+typeset -r WPCONFIG_FILE="wp-config.php"
+
+
+function LOG {
+	echo $*
+}
+
+#This function process the www directory where all the wordpress sites should
+#be present.
+#Arguments:
+# $1 the base path of the process
+function process_www_directory {
+	typeset base_path=$1
+	typeset item
+	typeset i
+    for i in $(ls $base_path)
+    do
+        item=$base_path/$i
+        
+        LOG Processing $item
+        
+        # If the current file is a directory, 
+        # process the directory:
+        if [[ -d $item ]]; then
+        	#Do it using the process function:
+        	processDirectory $item
+        fi
+        LOG done for $item
+    done
+	exit 0
+}
+
+#This function will check if there is a wp-config.php file into the given directory
+#Arguments:
+# $1 the directory
+function processDirectory {
+	typeset directory=$1
+	
+	typeset configFile=$directory/$WPCONFIG_FILE
+	
+	#Checks if the wp-config.php file exists
+	if [[ -f $configFile ]]; then
+		#So we have something to do here:
+		LOG Preparing backup of $directory
+		
+		#Retrieve the values from the config file:
+		DB_NAME=$(getValueFromWPConfig DB_NAME $configFile)
+		if [[ $? != "0" ]]; then
+			#It is an error, we should stop
+			return 1
+		fi
+		DB_HOST=$(getValueFromWPConfig DB_HOST $configFile)
+		if [[ $? != "0" ]]; then
+			#It is an error, we should stop
+			return 1
+		fi
+		DB_USER=$(getValueFromWPConfig DB_USER $configFile)
+		if [[ $? != "0" ]]; then
+			#It is an error, we should stop
+			return 1
+		fi
+		DB_PASSWORD=$(getValueFromWPConfig DB_PASSWORD $configFile)
+		if [[ $? != "0" ]]; then
+			#It is an error, we should stop
+			return 1
+		fi
+		
+		echo DB_NAME=$DB_NAME
+		echo DB_HOST=$DB_HOST
+		echo DB_USER=$DB_USER
+		echo DB_PASSWORD=$DB_PASSWORD
+		
+		if [[ "$DB_HOST" = "localhost" || "$DB_HOST" = "127.0.0.1" ]]; then
+			directory_name=$(basename $directory)
+			
+			LOG "We have to backup $directory"
+			mysqldump --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
+
+		else
+			LOG "Nothing to do for $directory"
+		fi
+		
+	else
+		#Else, there is nothing to be done
+		LOG Nothing to do for $directory
+	fi
+	return 0
+}
+
+#Do a grep and awk to retrieve the valueName from the wp-config.php file
+function getValueFromWPConfig {
+	typeset valueName=$1
+	typeset filepath=$2
+	
+	#A small grep + awk to get the value:
+	the_value=$($GREP $valueName $filepath | $AWK -F"'" '{print $4}')
+	#Check the return value
+	if [[ $? != "0" ]]; then
+		#It is an error, we should warn the user
+		LOG "ERROR: could not retrieve the value $valueName from $filepath"
+		return 1
+	else
+		echo $the_value
+		return 0
+	fi
+}
+
+process_www_directory $WWW_DIR
+
+
+exit 0
 
