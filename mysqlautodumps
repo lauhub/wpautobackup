@@ -1,1 +1,12 @@
+#!/bin/bash
+
+#Default configuration. May be overwritten by configuration file wpautobackup.conf
+
+#Default backup directory
+BACKUP_DIR=$HOME/wpBackup
+
+#Replace this with gzip if you have large database that make compression too long
+ZIP_TOOL=bzip2
+
+
 
