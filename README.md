@@ -45,7 +45,9 @@ The zip compression tool may be given into the wpautobackup.conf file.
 
 <pre><code>BACKUP_DIR=$HOME/wpBackup
 
-ZIP_TOOL=gzip</code></pre>
+ZIP_TOOL=gzip
+#DO NOT FORGET to update the suffix accordingly
+ZIP_SUFFIX=gz</code></pre>
 
 This script is aimed to be run using _cron_. Be careful of the privileges of the user
 who runs the script: he must have write privileges over the BACKUP_DIR
