@@ -12,6 +12,7 @@ ZIP_SUFFIX=bz2
 GREP=/bin/grep
 AWK=/usr/bin/awk
 
+POST_DUMP_OPERATION=""
 
 WWW_DIR=/var/www
 
@@ -20,7 +21,7 @@ AUTOBACKUP_CONF_FOLDER=$HOME/.wpautobackup
 
 #If it exists, load the configuration file
 if [[ -f $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf ]]; then
-	. wpautobackup.conf
+	. $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf
 fi
 
 
@@ -43,9 +44,14 @@ exec 2>&1
 
 typeset -r WPCONFIG_FILE="wp-config.php"
 
+LOG="LOG_FUNCTION"
 
-function LOG {
+function LOG_FUNCTION {
 	echo $*
+}
+function DISCARD_FUNCTION {
+	#Does nothing
+	NOTHING_TO_DO=""
 }
 
 #This function process the www directory where all the wordpress sites should
@@ -54,21 +60,23 @@ function LOG {
 # $1 the base path of the process
 function process_www_directory {
 	typeset base_path=$1
+	typeset action=$2
+	
 	typeset item
 	typeset i
     for i in $(ls $base_path)
     do
         item=$base_path/$i
         
-        LOG Processing $item
+        $LOG Processing $item
         
         # If the current file is a directory, 
         # process the directory:
         if [[ -d $item ]]; then
         	#Do it using the process function:
-        	processDirectory $item
+        	processDirectory $item $action
         fi
-        LOG done for $item
+        $LOG done for $item
     done
 	exit 0
 }
@@ -78,57 +86,92 @@ function process_www_directory {
 # $1 the directory
 function processDirectory {
 	typeset directory=$1
-	
+	typeset action=$2
 	typeset configFile=$directory/$WPCONFIG_FILE
 	
 	#Checks if the wp-config.php file exists
 	if [[ -f $configFile ]]; then
-		#So we have something to do here:
-		LOG Preparing backup of $directory
-		
-		#Retrieve the values from the config file:
-		DB_NAME=$(getValueFromWPConfig DB_NAME $configFile)
-		if [[ $? != "0" ]]; then
-			#It is an error, we should stop
-			return 1
-		fi
-		DB_HOST=$(getValueFromWPConfig DB_HOST $configFile)
-		if [[ $? != "0" ]]; then
-			#It is an error, we should stop
-			return 1
-		fi
-		DB_USER=$(getValueFromWPConfig DB_USER $configFile)
-		if [[ $? != "0" ]]; then
-			#It is an error, we should stop
-			return 1
-		fi
-		DB_PASSWORD=$(getValueFromWPConfig DB_PASSWORD $configFile)
-		if [[ $? != "0" ]]; then
-			#It is an error, we should stop
-			return 1
-		fi
-		
-		echo DB_NAME=$DB_NAME
-		echo DB_HOST=$DB_HOST
-		echo DB_USER=$DB_USER
-		echo DB_PASSWORD=$DB_PASSWORD
-		
-		if [[ "$DB_HOST" = "localhost" || "$DB_HOST" = "127.0.0.1" ]]; then
-			directory_name=$(basename $directory)
-			
-			LOG "We have to backup $directory"
-			mysqldump --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
-
-		else
-			LOG "Nothing to do for $directory"
-		fi
-		
+		$action $directory $configFile
 	else
 		#Else, there is nothing to be done
-		LOG Nothing to do for $directory
+		$LOG Nothing to do for $directory
 	fi
 	return 0
 }
+
+#Only display the name of the directory
+function display_directory {
+	typeset directory=$1
+	typeset configFile=$2
+	directory_name=$(basename $directory)
+	echo $directory_name
+}
+
+
+#Do the backup of the given directory
+function backup_directory {
+	typeset directory=$1
+	typeset configFile=$2
+	
+	#So we have something to do here:
+	$LOG Preparing backup of $directory
+	
+	#Retrieve the values from the config file:
+	DB_NAME=$(getValueFromWPConfig DB_NAME $configFile)
+	if [[ $? != "0" ]]; then
+		#It is an error, we should stop
+		return 1
+	fi
+	DB_HOST=$(getValueFromWPConfig DB_HOST $configFile)
+	if [[ $? != "0" ]]; then
+		#It is an error, we should stop
+		return 1
+	fi
+	DB_USER=$(getValueFromWPConfig DB_USER $configFile)
+	if [[ $? != "0" ]]; then
+		#It is an error, we should stop
+		return 1
+	fi
+	DB_PASSWORD=$(getValueFromWPConfig DB_PASSWORD $configFile)
+	if [[ $? != "0" ]]; then
+		#It is an error, we should stop
+		return 1
+	fi
+	
+	$LOG DB_NAME=$DB_NAME
+	$LOG DB_HOST=$DB_HOST
+	$LOG DB_USER=$DB_USER
+	$LOG DB_PASSWORD=$DB_PASSWORD
+	
+	#If we have a database that is on localhost:
+	if [[ "$DB_HOST" = "localhost" || "$DB_HOST" = "127.0.0.1" ]]; then
+		directory_name=$(basename $directory)
+		
+		$LOG "We have to backup $directory"
+		
+		#the output filename
+		output_dump=$BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
+		
+		#Let us do the backup:
+		mysqldump --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
+		return_code=$?
+		if [[ $return_code != "0" ]]; then
+			#It is an error, we should stop
+			$LOG "ERROR: mysqldump exited with error code $return_code"
+			return $return_code
+		fi
+		
+		#We may now want to do something with the output file
+		#If the POST_DUMP_OPERATION is an executable file, we just call it
+		if [[ -x $POST_DUMP_OPERATION ]]; then
+			$LOG "Calling external file to finish backup process"
+			$POST_DUMP_OPERATION $output_dump
+		fi
+	else
+		$LOG "Nothing to do for $directory"
+	fi
+}
+
 
 #Do a grep and awk to retrieve the valueName from the wp-config.php file
 function getValueFromWPConfig {
@@ -140,7 +183,7 @@ function getValueFromWPConfig {
 	#Check the return value
 	if [[ $? != "0" ]]; then
 		#It is an error, we should warn the user
-		LOG "ERROR: could not retrieve the value $valueName from $filepath"
+		$LOG "ERROR: could not retrieve the value $valueName from $filepath"
 		return 1
 	else
 		echo $the_value
@@ -148,7 +191,9 @@ function getValueFromWPConfig {
 	fi
 }
 
-process_www_directory $WWW_DIR
+#process_www_directory $WWW_DIR backup_directory
+LOG=DISCARD_FUNCTION
+process_www_directory $WWW_DIR display_directory
 
 
 exit 0
