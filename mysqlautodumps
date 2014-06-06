@@ -1,4 +1,6 @@
 #!/bin/bash
+# Script written by lau dot hub at gmail dot com
+
 
 #Default configuration. May be overwritten by configuration file wpautobackup.conf
 
@@ -6,14 +8,21 @@
 BACKUP_DIR=$HOME/wpBackup
 
 #Replace this with gzip if you have large database that make compression too long
-ZIP_TOOL=bzip2
+ZIP_TOOL=/bin/bzip2
 ZIP_SUFFIX=bz2
 
+#The default program paths
 GREP=/bin/grep
 AWK=/usr/bin/awk
+MYSQLDUMP=/usr/bin/mysqldump
+ECHO=/bin/echo
+GETOPT=/usr/bin/getopt
+MKDIR=/bin/mkdir
+TEE=/usr/bin/tee
 
 POST_DUMP_OPERATION=""
 
+#The base directory
 WWW_DIR=/var/www
 
 #The log file is there
@@ -24,17 +33,53 @@ if [[ -f $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf ]]; then
 	. $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf
 fi
 
+#Here we add some options to allow to display only (without performing backup)
+#the directories where a wordpress site is installed.
+OPTS=`getopt -o d -l display -- "$@"`
+if [ $? != 0 ]
+then
+    exit 1
+fi
 
-mkdir -p $AUTOBACKUP_CONF_FOLDER
-mkdir -p $BACKUP_DIR
+#The default LOG function
+LOG="LOG_FUNCTION"
+#The default ACTION_TO_DO function
+ACTION_TO_DO="backup_directory"
 
+eval set -- "$OPTS"
+
+while true ; do
+    case "$1" in
+    	#Here we change the action to do in order to make it only display
+    	#and discard any logs
+        -d) LOG="DISCARD_FUNCTION"
+			ACTION_TO_DO="display_directory"
+        	;;
+        --display)
+        	LOG="DISCARD_FUNCTION"
+        	ACTION_TO_DO="display_directory"
+        	;;
+        --) break ;;
+    esac
+    shift
+done
+
+
+
+
+#Create directories
+$MKDIR -p $AUTOBACKUP_CONF_FOLDER
+$MKDIR -p $BACKUP_DIR
+
+#The date of the current backup. Will be the same for all backups,
+#but may differ from the real dump date.
 CURRENT_DATE=$(date +%Y%m%d%H%M%S)
 
 #The log file:
 LOGFILE=$AUTOBACKUP_CONF_FOLDER/wpautobackup.log
 
 #Redirect to the log file and to the default ouptut
-exec > >(tee --append $LOGFILE)
+exec > >($TEE --append $LOGFILE)
 	
 # Without this, only stdout would be captured - i.e. your
 # log file would not contain any error messages.
@@ -42,13 +87,14 @@ exec > >(tee --append $LOGFILE)
 # I did not want to steal from him by simply adding his answer to mine.
 exec 2>&1
 
+#The wp-config.php's name constant
 typeset -r WPCONFIG_FILE="wp-config.php"
 
-LOG="LOG_FUNCTION"
-
+#Function to echo log messages
 function LOG_FUNCTION {
-	echo $*
+	$ECHO $*
 }
+#Function do discard log messages
 function DISCARD_FUNCTION {
 	#Does nothing
 	NOTHING_TO_DO=""
@@ -58,6 +104,7 @@ function DISCARD_FUNCTION {
 #be present.
 #Arguments:
 # $1 the base path of the process
+# $2 the action to be executed (backup_directory or display_directory)
 function process_www_directory {
 	typeset base_path=$1
 	typeset action=$2
@@ -68,7 +115,7 @@ function process_www_directory {
     do
         item=$base_path/$i
         
-        $LOG Processing $item
+        $LOG "Processing $item"
         
         # If the current file is a directory, 
         # process the directory:
@@ -84,6 +131,7 @@ function process_www_directory {
 #This function will check if there is a wp-config.php file into the given directory
 #Arguments:
 # $1 the directory
+# $2 the action to be executed (backup_directory or display_directory)
 function processDirectory {
 	typeset directory=$1
 	typeset action=$2
@@ -100,15 +148,22 @@ function processDirectory {
 }
 
 #Only display the name of the directory
+#Arguments:
+#	the directory path
+#	the wp-config.php file path
 function display_directory {
 	typeset directory=$1
 	typeset configFile=$2
 	directory_name=$(basename $directory)
-	echo $directory_name
+	#Does nothing except display
+	$ECHO $directory_name
 }
 
 
 #Do the backup of the given directory
+#Arguments:
+#	the directory path
+#	the wp-config.php file path
 function backup_directory {
 	typeset directory=$1
 	typeset configFile=$2
@@ -138,6 +193,7 @@ function backup_directory {
 		return 1
 	fi
 	
+	#Do some logging to indicate what is done
 	$LOG DB_NAME=$DB_NAME
 	$LOG DB_HOST=$DB_HOST
 	$LOG DB_USER=$DB_USER
@@ -153,7 +209,7 @@ function backup_directory {
 		output_dump=$BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
 		
 		#Let us do the backup:
-		mysqldump --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
+		$MYSQLDUMP --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
 		return_code=$?
 		if [[ $return_code != "0" ]]; then
 			#It is an error, we should stop
@@ -163,6 +219,7 @@ function backup_directory {
 		
 		#We may now want to do something with the output file
 		#If the POST_DUMP_OPERATION is an executable file, we just call it
+		#POST_DUMP_OPERATION should be defined into the configuration file
 		if [[ -x $POST_DUMP_OPERATION ]]; then
 			$LOG "Calling external file to finish backup process"
 			$POST_DUMP_OPERATION $output_dump
@@ -174,6 +231,9 @@ function backup_directory {
 
 
 #Do a grep and awk to retrieve the valueName from the wp-config.php file
+#Arguments:
+#	the value name to read from the wp-config.php file (DB_USER, DB_HOST, DB_NAME, DB_PASSWORD)
+#	the filepath of the wp-config.php file
 function getValueFromWPConfig {
 	typeset valueName=$1
 	typeset filepath=$2
@@ -186,15 +246,13 @@ function getValueFromWPConfig {
 		$LOG "ERROR: could not retrieve the value $valueName from $filepath"
 		return 1
 	else
-		echo $the_value
+		$ECHO $the_value
 		return 0
 	fi
 }
 
-#process_www_directory $WWW_DIR backup_directory
-LOG=DISCARD_FUNCTION
-process_www_directory $WWW_DIR display_directory
-
+#Now we run the process and give the action to do
+process_www_directory $WWW_DIR $ACTION_TO_DO
 
 exit 0
 
