@@ -220,34 +220,39 @@ function backup_directory {
 	$LOG DB_USER=$DB_USER
 	$LOG DB_PASSWORD=$DB_PASSWORD
 	
+	mysql_hostname_option="--host=$DB_HOST"
+	
 	#If we have a database that is on localhost:
 	if [[ "$DB_HOST" = "localhost" || "$DB_HOST" = "127.0.0.1" ]]; then
-		directory_name=$(basename $directory)
+		mysql_hostname_option=""
+	fi
+	
+	
+	directory_name=$(basename $directory)
+	
+	$LOG "---------> MySQL dump of $directory_name"
+	
+	#the output filename
+	output_dump=$BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
+	
+	#Let us do the backup:
+	$LOG "$MYSQLDUMP --opt -Q $mysql_hostname_option -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump"
+	#If we are not running dry:
+	if [[ $DRY_RUN = "false" ]] ; then
+		$MYSQLDUMP --opt -Q $mysql_hostname_option -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
+		return_code=$?
+		if [[ $return_code != "0" ]]; then
+			#It is an error, we should stop
+			$LOG "ERROR: mysqldump exited with error code $return_code"
+			return $return_code
+		fi
 		
-		$LOG "---------> MySQL dump of $directory_name"
-		
-		#the output filename
-		output_dump=$BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
-		
-		#Let us do the backup:
-		$LOG "$MYSQLDUMP --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump"
-		#If we are not running dry:
-		if [[ $DRY_RUN = "false" ]] ; then
-			$MYSQLDUMP --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
-			return_code=$?
-			if [[ $return_code != "0" ]]; then
-				#It is an error, we should stop
-				$LOG "ERROR: mysqldump exited with error code $return_code"
-				return $return_code
-			fi
-			
-			#We may now want to do something with the output file
-			#If the POST_DUMP_OPERATION is an executable file, we just call it
-			#POST_DUMP_OPERATION should be defined into the configuration file
-			if [[ -x $POST_DUMP_OPERATION ]]; then
-				$LOG "Calling external file to finish backup process of mysql dump"
-				$POST_DUMP_OPERATION $output_dump
-			fi
+		#We may now want to do something with the output file
+		#If the POST_DUMP_OPERATION is an executable file, we just call it
+		#POST_DUMP_OPERATION should be defined into the configuration file
+		if [[ -x $POST_DUMP_OPERATION ]]; then
+			$LOG "Calling external file to finish backup process of mysql dump"
+			$POST_DUMP_OPERATION $output_dump
 		fi
 	fi
 	

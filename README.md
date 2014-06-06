@@ -1,4 +1,4 @@
-# Automatic MySQL dump script for Wordpress.
+# Automatic backup script for Wordpress.
 
 ## Purpose
 
@@ -9,9 +9,20 @@ This script has to be run onto a directory (the base directory) when one or more
 The script list the first level directories and, each time it finds a wp-config.php file, 
 it parses it to retrieve the DB_NAME, DB_HOST, DB_USER and DB_PASSWORD.
 
-If the DB_HOST is localhost or 127.0.0.1, then it performs a mysqldump of this database
+1. It performs a mysqldump of this database
 into a backup directory that is given by the wpautobackup.conf file. If
 not present, the default backup directory will be the <WWW>/wpBackups directory.
+
+2. (OPTIONNALY with the -c option) It performs a backup of both wp-config.php 
+and wp-content directory into a tar file.
+
+The two files have the same name: 
+
+1. one with the .sql.ZIP_SUFFIX suffix (site_name-date.sql.ZIP_SUFFIX)
+
+2. one with the .tar.ZIP_SUFFIX suffix (site_name-date.tar.ZIP_SUFFIX)
+
+Where ZIP_SUFFIX is given into the configuration file.
 
 ## Options
 
@@ -22,6 +33,12 @@ display the name of the directories where a wp-config.php can be found.
 To do this use the -d (or --display) optional argument:
 
     bash mysqlautodumps -d
+
+### Export content of site
+
+Using the -c (or --content) option the script will make a backup of wp-content 
+and wp-config.php.
+
 
 ### Call a script after backup
 	
@@ -39,7 +56,7 @@ The path to the SQL dump is given as an argument to this executable when called.
 
 Each file will be zipped like this:
 
-    mysqldump --opt -Q -u dbusername --password=dbpassword dbname | gzip > /path-to-store-the-backup-file/db_backup.sql.gz
+    mysqldump --opt -Q --host=$DB_HOST -u $DB_USER --password=$DB_PASSWORD $DB_NAME  | gzip > /path-to-store-the-backup-file/db_backup.sql.gz
 
 The zip compression tool may be given into the wpautobackup.conf file.
 
