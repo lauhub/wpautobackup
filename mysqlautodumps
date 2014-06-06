@@ -20,6 +20,8 @@ GETOPT=/usr/bin/getopt
 MKDIR=/bin/mkdir
 TEE=/usr/bin/tee
 
+TAR=/bin/tar
+
 POST_DUMP_OPERATION=""
 
 #The base directory
@@ -33,23 +35,42 @@ if [[ -f $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf ]]; then
 	. $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf
 fi
 
-#Here we add some options to allow to display only (without performing backup)
-#the directories where a wordpress site is installed.
-OPTS=`getopt -o d -l display -- "$@"`
-if [ $? != 0 ]
-then
-    exit 1
-fi
+
 
 #The default LOG function
 LOG="LOG_FUNCTION"
 #The default ACTION_TO_DO function
 ACTION_TO_DO="backup_directory"
 
+CONTENT_BACKUP="do_not_backup_content"
+
+#Here we add some options to allow to display only (without performing backup)
+#the directories where a wordpress site is installed.
+OPTS=`getopt -o dc -l display,content,dry-run -- "$@"`
+if [ $? != 0 ]
+then
+    exit 1
+fi
+
+DRY_RUN="false"
+
 eval set -- "$OPTS"
 
 while true ; do
     case "$1" in
+    	#Here we change the action to do in order to make backup of wp-content
+        -c) CONTENT_BACKUP="backup_content"
+        	$LOG "Will backup content"
+        	;;
+        --content)
+        	$LOG "Will backup content"
+        	CONTENT_BACKUP="backup_content"
+        	;;
+        #For testing purpose, to avoid that a database is dumped
+        --dry-run)
+        	$LOG "Dry run"
+        	DRY_RUN="true"
+        	;;
     	#Here we change the action to do in order to make it only display
     	#and discard any logs
         -d) LOG="DISCARD_FUNCTION"
@@ -203,32 +224,93 @@ function backup_directory {
 	if [[ "$DB_HOST" = "localhost" || "$DB_HOST" = "127.0.0.1" ]]; then
 		directory_name=$(basename $directory)
 		
-		$LOG "We have to backup $directory"
+		$LOG "---------> MySQL dump of $directory_name"
 		
 		#the output filename
 		output_dump=$BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
 		
 		#Let us do the backup:
-		$MYSQLDUMP --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
+		$LOG "$MYSQLDUMP --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump"
+		#If we are not running dry:
+		if [[ $DRY_RUN = "false" ]] ; then
+			$MYSQLDUMP --opt -Q -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
+			return_code=$?
+			if [[ $return_code != "0" ]]; then
+				#It is an error, we should stop
+				$LOG "ERROR: mysqldump exited with error code $return_code"
+				return $return_code
+			fi
+			
+			#We may now want to do something with the output file
+			#If the POST_DUMP_OPERATION is an executable file, we just call it
+			#POST_DUMP_OPERATION should be defined into the configuration file
+			if [[ -x $POST_DUMP_OPERATION ]]; then
+				$LOG "Calling external file to finish backup process of mysql dump"
+				$POST_DUMP_OPERATION $output_dump
+			fi
+		fi
+	fi
+	
+	#Performs the backup (or do not backup) action:
+	$CONTENT_BACKUP $directory
+}
+
+#Do the backup of the wp-content of the given directory
+#Arguments:
+#	the directory path
+function backup_content {
+	typeset directory=$1
+	typeset directory_name=$(basename $directory)
+	#Does nothing
+	wp_content_name=wp-content
+	$LOG "---------> Backup of $directory's content"
+	
+	output_tar=$BACKUP_DIR/$directory_name-$CURRENT_DATE.tar
+	output_file=$output_tar.$ZIP_SUFFIX
+		
+	#Let us do the backup:
+	command="$TAR cvf $output_tar -C $directory $wp_content_name"
+	$LOG "$command"
+	#If we are not running dry:
+	if [[ $DRY_RUN = "false" ]] ; then
+		#Do the tar by changing first to the directory path:
+		$command
 		return_code=$?
 		if [[ $return_code != "0" ]]; then
 			#It is an error, we should stop
-			$LOG "ERROR: mysqldump exited with error code $return_code"
+			$LOG "ERROR: tar+zip exited with error code $return_code for wp-conten"
 			return $return_code
 		fi
 		
-		#We may now want to do something with the output file
-		#If the POST_DUMP_OPERATION is an executable file, we just call it
-		#POST_DUMP_OPERATION should be defined into the configuration file
+		$ZIP_TOOL $ouptut_tar
 		if [[ -x $POST_DUMP_OPERATION ]]; then
-			$LOG "Calling external file to finish backup process"
-			$POST_DUMP_OPERATION $output_dump
+			$LOG "Calling external file to finish backup process of wp-content"
+			$POST_DUMP_OPERATION $output_file
 		fi
-	else
-		$LOG "Nothing to do for $directory"
+	fi
+	
+	$LOG "$TAR -rvf $output_tar -C $directory $WPCONFIG_FILE"
+	#If we are not running dry:
+	if [[ $DRY_RUN = "false" ]] ; then
+		#Do the tar by changing first to the directory path:
+		$TAR -rvf $output_tar -C $directory $WPCONFIG_FILE
+		return_code=$?
+		if [[ $return_code != "0" ]]; then
+			#It is an error, we should stop
+			$LOG "ERROR: tar+zip exited with error code $return_code for wp-config.php"
+			return $return_code
+		fi
+		if [[ -x $POST_DUMP_OPERATION ]]; then
+			$LOG "Calling external file to finish backup process of wp-config.php"
+			$POST_DUMP_OPERATION $output_file
+		fi
 	fi
 }
 
+function do_not_backup_content {
+	#Does nothing
+	$LOG "Nothing to do for $directory"
+}
 
 #Do a grep and awk to retrieve the valueName from the wp-config.php file
 #Arguments:
