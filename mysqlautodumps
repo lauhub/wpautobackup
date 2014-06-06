@@ -136,7 +136,7 @@ function process_www_directory {
     do
         item=$base_path/$i
         
-        $LOG "Processing $item"
+        $LOG "---------> Processing $item"
         
         # If the current file is a directory, 
         # process the directory:
@@ -255,7 +255,7 @@ function backup_directory {
 	$CONTENT_BACKUP $directory
 }
 
-#Do the backup of the wp-content of the given directory
+#Do the backup of the wp-content and wp-config.php of the given directory
 #Arguments:
 #	the directory path
 function backup_content {
@@ -265,43 +265,22 @@ function backup_content {
 	wp_content_name=wp-content
 	$LOG "---------> Backup of $directory's content"
 	
-	output_tar=$BACKUP_DIR/$directory_name-$CURRENT_DATE.tar
-	output_file=$output_tar.$ZIP_SUFFIX
+	output_file=$BACKUP_DIR/$directory_name-$CURRENT_DATE.tar.$ZIP_SUFFIX
 		
 	#Let us do the backup:
-	command="$TAR cvf $output_tar -C $directory $wp_content_name"
-	$LOG "$command"
+	$LOG "$TAR cf - -C $directory $wp_content_name $WPCONFIG_FILE  | $ZIP_TOOL > $output_file"
 	#If we are not running dry:
 	if [[ $DRY_RUN = "false" ]] ; then
 		#Do the tar by changing first to the directory path:
-		$command
+		$TAR cf - -C $directory $wp_content_name $WPCONFIG_FILE  | $ZIP_TOOL > $output_file
 		return_code=$?
 		if [[ $return_code != "0" ]]; then
 			#It is an error, we should stop
-			$LOG "ERROR: tar+zip exited with error code $return_code for wp-conten"
+			$LOG "ERROR: tar+zip exited with error code $return_code"
 			return $return_code
 		fi
-		
-		$ZIP_TOOL $ouptut_tar
 		if [[ -x $POST_DUMP_OPERATION ]]; then
 			$LOG "Calling external file to finish backup process of wp-content"
-			$POST_DUMP_OPERATION $output_file
-		fi
-	fi
-	
-	$LOG "$TAR -rvf $output_tar -C $directory $WPCONFIG_FILE"
-	#If we are not running dry:
-	if [[ $DRY_RUN = "false" ]] ; then
-		#Do the tar by changing first to the directory path:
-		$TAR -rvf $output_tar -C $directory $WPCONFIG_FILE
-		return_code=$?
-		if [[ $return_code != "0" ]]; then
-			#It is an error, we should stop
-			$LOG "ERROR: tar+zip exited with error code $return_code for wp-config.php"
-			return $return_code
-		fi
-		if [[ -x $POST_DUMP_OPERATION ]]; then
-			$LOG "Calling external file to finish backup process of wp-config.php"
 			$POST_DUMP_OPERATION $output_file
 		fi
 	fi
