@@ -258,6 +258,10 @@ function backup_directory {
 	
 	#Performs the backup (or do not backup) action:
 	$CONTENT_BACKUP $directory
+	
+	#Preparation of next thing to do: remove old backups:
+	#find ~/wpBackup/ -ctime +30 -exec rm {} \; #Do not forget to put variables
+	
 }
 
 #Do the backup of the wp-content and wp-config.php of the given directory
