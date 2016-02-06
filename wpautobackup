@@ -35,7 +35,15 @@ if [[ -f $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf ]]; then
 	. $AUTOBACKUP_CONF_FOLDER/wpautobackup.conf
 fi
 
-
+#Function to echo log messages
+function LOG_FUNCTION {
+	$ECHO $*
+}
+#Function do discard log messages
+function DISCARD_FUNCTION {
+	#Does nothing
+	NOTHING_TO_DO=""
+}
 
 #The default LOG function
 LOG="LOG_FUNCTION"
@@ -110,16 +118,6 @@ exec 2>&1
 
 #The wp-config.php's name constant
 typeset -r WPCONFIG_FILE="wp-config.php"
-
-#Function to echo log messages
-function LOG_FUNCTION {
-	$ECHO $*
-}
-#Function do discard log messages
-function DISCARD_FUNCTION {
-	#Does nothing
-	NOTHING_TO_DO=""
-}
 
 #This function process the www directory where all the wordpress sites should
 #be present.
