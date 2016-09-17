@@ -1,5 +1,17 @@
 #!/bin/bash
 
+TARGET_DIR=$1
+
+if [[ "$TARGET_DIR" = "" ]] ; then
+	echo Please indicate the target dir
+	echo Usage: $0 TARGET_DIR
+	exit 1
+fi
+if [[ ! -d $TARGET_DIR ]] ; then
+	echo Target dir does not exist
+	exit 2
+fi
+
 
 echo Cleans old backup and keeps only monthly backup if they are older than one month
 
@@ -16,13 +28,13 @@ CURRENT_EPOCH=$(date +%s)
 eraseFiles(){
 	pattern=$1
 	delay=$2
-	ls ~/wpBackup/*$pattern* > /dev/null 2>&1
+	ls $TARGET_DIR/*$pattern* > /dev/null 2>&1
 	if [[ "$?" != "0" ]] ; then
 		return 0
 	fi
 	echo Delay is $delay
-	echo Erase ~/wpBackup/*$pattern*
-	rm ~/wpBackup/*$pattern*
+	echo Erase $TARGET_DIR/*$pattern*
+	rm $TARGET_DIR/*$pattern*
 	
 }
 
@@ -37,7 +49,6 @@ for (( theyear=2014; theyear<=$CURRENT_YEAR; theyear++ )) ; do
 				(( delay_in_seconds = $CURRENT_EPOCH - $TARGET_EPOCH ))
 				delay_in_day=$(($delay_in_seconds / 3600 / 24 ))
 				if (( $delay_in_day > 31  )) ; then
-					#ls ~/wpBackup/**
 					if (( $delay_in_day < 365 )) ; then
 						if [[ "$theday" != "01" ]]; then
 							eraseFiles $theyear$themonth$theday $delay_in_day
