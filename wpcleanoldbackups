@@ -13,6 +13,14 @@ if [[ ! -d $TARGET_DIR ]] ; then
 fi
 
 
+if [[ "$2" = "-d" ]] ; then
+        echo Debugging mode
+	DEBUG_MODE=1
+else
+	DEBUG_MODE=0
+fi
+
+
 echo Cleans old backup and keeps only monthly backup if they are older than one month
 
 CURRENT_DATE=$(date +%Y%m%d%H%M%S)
@@ -34,7 +42,11 @@ eraseFiles(){
 	fi
 	echo Delay is $delay
 	echo Erase $TARGET_DIR/*$pattern*
-	rm $TARGET_DIR/*$pattern*
+	if [[ "$DEBUG_MODE" = "0" ]] ; then
+		rm $TARGET_DIR/*$pattern*
+	else
+		echo $TARGET_DIR/*$pattern*
+	fi
 	
 }
 
