@@ -50,8 +50,9 @@ eraseFiles(){
 	
 }
 
+previous_year=$(( $CURRENT_YEAR - 1 ))
 
-for (( theyear=2014; theyear<=$CURRENT_YEAR; theyear++ )) ; do
+for (( theyear=$previous_year ; theyear<=$CURRENT_YEAR; theyear++ )) ; do
 	for themonth in {01..12} ; do 
 		for theday in {01..31} ; do
 			TARGET_EPOCH=$(date --date="$theyear-$themonth-$theday" +%s 2> /dev/null)
