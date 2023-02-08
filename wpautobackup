@@ -45,6 +45,35 @@ function DISCARD_FUNCTION {
 	NOTHING_TO_DO=""
 }
 
+display_help(){
+cat <<EOH
+Creates a backup of any WordPress site on the current server.
+
+Usage:
+	$0 [--dry-run] [-c|--content] [-d|--display] [--prefix|-p] PREFIX [--suffix|-s] SUFFIX
+
+
+Options:
+	--dry-run : does nothing, only searchs for sites and display their names
+
+	-c
+	--content : Backups the content of the sites
+
+	-d
+	--display : Displays the sites on the local server
+
+	-p
+	--prefix : appends a prefix to the created files
+
+	-s
+	--suffix : appends a suffix to the created files
+
+Author: Laurent HUBERT
+
+EOH
+}
+
+
 #The default LOG function
 LOG="LOG_FUNCTION"
 #The default ACTION_TO_DO function
@@ -54,7 +83,7 @@ CONTENT_BACKUP="do_not_backup_content"
 
 #Here we add some options to allow to display only (without performing backup)
 #the directories where a wordpress site is installed.
-OPTS=`getopt -o dc -l display,content,dry-run -- "$@"`
+OPTS=`getopt -o dcp:s: -l display,content,dry-run,prefix,suffix -- "$@"`
 if [ $? != 0 ]
 then
     exit 1
@@ -88,6 +117,14 @@ while true ; do
         	LOG="DISCARD_FUNCTION"
         	ACTION_TO_DO="display_directory"
         	;;
+	--prefix|-p)
+		shift
+		PREFIX="$1-"
+		;;
+	--suffix|-s)
+		shift
+		SUFFIX="-$1"
+		;;
         --) break ;;
     esac
     shift
@@ -231,7 +268,7 @@ function backup_directory {
 	$LOG "---------> MySQL dump of $directory_name"
 	
 	#the output filename
-	output_dump=$BACKUP_DIR/$directory_name-$CURRENT_DATE.sql.$ZIP_SUFFIX
+	output_dump=$BACKUP_DIR/${PREFIX}$directory_name-$CURRENT_DATE${SUFFIX}.sql.$ZIP_SUFFIX
 	
 	#Let us do the backup:
 	$LOG "$MYSQLDUMP --opt -Q $mysql_hostname_option -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump"
@@ -272,7 +309,7 @@ function backup_content {
 	wp_content_name=wp-content
 	$LOG "---------> Backup of $directory's content"
 	
-	output_file=$BACKUP_DIR/$directory_name-$CURRENT_DATE.tar.$ZIP_SUFFIX
+	output_file=$BACKUP_DIR/${PREFIX}$directory_name-$CURRENT_DATE${SUFFIX}.tar.$ZIP_SUFFIX
 		
 	#Let us do the backup:
 	$LOG "$TAR cf - -C $directory $wp_content_name $WPCONFIG_FILE  | $ZIP_TOOL > $output_file"
