@@ -50,7 +50,7 @@ cat <<EOH
 Creates a backup of any WordPress site on the current server.
 
 Usage:
-	$0 [--dry-run] [-c|--content] [-d|--display] [--prefix|-p] PREFIX [--suffix|-s] SUFFIX
+	$0 [--dry-run] [-c|--content] [-d|--display] [--prefix|-p PREFIX] [--suffix|-s SUFFIX]
 
 
 Options:
@@ -83,7 +83,7 @@ CONTENT_BACKUP="do_not_backup_content"
 
 #Here we add some options to allow to display only (without performing backup)
 #the directories where a wordpress site is installed.
-OPTS=`getopt -o dcp:s: -l display,content,dry-run,prefix,suffix -- "$@"`
+OPTS=`getopt -o dcp:s: -l display,content,dry-run,prefix:,suffix: -- "$@"`
 if [ $? != 0 ]
 then
     exit 1
@@ -271,10 +271,10 @@ function backup_directory {
 	output_dump=$BACKUP_DIR/${PREFIX}$directory_name-$CURRENT_DATE${SUFFIX}.sql.$ZIP_SUFFIX
 	
 	#Let us do the backup:
-	$LOG "$MYSQLDUMP --opt -Q $mysql_hostname_option -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump"
+	$LOG "$MYSQLDUMP --opt -Q $mysql_hostname_option --no-tablespaces -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump"
 	#If we are not running dry:
 	if [[ $DRY_RUN = "false" ]] ; then
-		$MYSQLDUMP --opt -Q $mysql_hostname_option -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
+		$MYSQLDUMP --opt -Q $mysql_hostname_option --no-tablespaces -u $DB_USER --password=$DB_PASSWORD $DB_NAME | $ZIP_TOOL > $output_dump
 		return_code=$?
 		if [[ $return_code != "0" ]]; then
 			#It is an error, we should stop
